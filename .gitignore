@@ -1,0 +1,63 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Output and logs
+output.json
+output/
+*.log
+*.out
+*.tmp
+*.bak
+
+# Environment files
+.env
+.venv/
+env/
+venv/
+
+# VSCode or IDE config
+.vscode/
+.idea/
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Docker-related
+*.tar
+*.img
+*.pid
+
+# PDF files (optional: ignore if large or auto-generated)
+*.pdf
+
+# Intermediate or generated files
+outline.json
+outline_cleaned.json
+structured_outline.json
+*.txt
+*.md.bak
+
+# Python test cache
+.cache/
+.tox/
+pytest_cache/
+
+# Round-specific folders
+Round1A/output/
+Round1B/output/
+Round1B/__pycache__/
+Round1B/input/__pycache__/
+Round1B/input/*.txt
+
+# Backup or temp files
+*.swp
+*.swo
+*~
+
+# MacOS file system
+.AppleDouble
+.LSOverride
