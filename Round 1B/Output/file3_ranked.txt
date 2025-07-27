@@ -1,0 +1,2460 @@
+Score: 6
+Bioinformatics
+BioGraphFusion: Graph Knowledge Embedding for
+Biological Completion and Reasoning
+Yitong Lin,1,† Jiaying He,1,† Jiahe Chen,1 Xinnan Zhu,1 Jianwei Zheng1,∗
+and Tao Bo2,∗
+1College of Computer Science and Technology, Zhejiang University of Technology, Hangzhou, Zhejiang,
+310023, China and 2Key Laboratory of Endocrine Glucose & Lipids Metabolism,Department of Endocrinology,
+Shandong Provincial Hospital Affiliated to Shandong First Medical University, Jinan, Shandong, China
+†Equal contributions.∗Corresponding author.
+FOR PUBLISHER ONLY Received on Date Month Year; revised on Date Month Year; accepted on Date Month Year
+Abstract
+Motivation: Biomedical knowledge graphs (KGs) are crucial for drug discovery and disease understanding,
+yet their completion and reasoning are challenging. Knowledge Embedding (KE) methods capture global
+semantics but struggle with dynamic structural integration, while Graph Neural Networks (GNNs) excel
+locally but often lack semantic understanding. Even ensemble approaches, including those leveraging language
+models, often fail to achieve a deep, adaptive, and synergistic co-evolution between semantic comprehension
+and structural learning. Addressing this critical gap in fostering continuous, reciprocal refinement between
+these two aspects in complex biomedical KGs is paramount.
+Results: We introduce BioGraphFusion, a novel framework for deeply synergistic semantic and structural
+learning. BioGraphFusion establishes a global semantic foundation via tensor decomposition, guiding an
+LSTM-driven mechanism to dynamically refine relation embeddings during graph propagation. This fosters
+adaptive interplay between semantic understanding and structural learning, further enhanced by query-guided
+subgraph construction and a hybrid scoring mechanism. Experiments across three key biomedical tasks
+demonstrate BioGraphFusion’s superior performance over state-of-the-art KE, GNN, and ensemble models.
+A case study on Cutaneous Malignant Melanoma 1 (CMM1) highlights its ability to unveil biologically
+meaningful pathways.
+Availability and Implementation: Source code and all training data are freely available for download at
+https://github.com/Y-TARL/BioGraphFusion.
+Contact: zjw@zjut.edu.cn, botao666666@126.com
+Supplementary information: Supplementary data are available at Bioinformatics online.
+Key words: Biological knowledge graph, Graph embedding, Knowledge graph reasoning, Graph neural network
+1. Introduction
+Knowledge Graphs (KGs) are semantic networks that represent
+relationships between entities as a set of triples (h, r, t), where
+h and t denote the head and tail entities, and r represents the
+relation connecting them
+(Wang et al., 2024a). These graphs
+model real-world concepts and their interactions through nodes
+(entities) and edges (relations). Specifically, biological knowledge
+graphs have extended this framework to encompass entities such
+as diseases, genes, drugs, chemicals, and proteins, facilitating a
+structured understanding of clinical knowledge.
+Technically, large-scale biological KGs such as DisGeNET (Pi˜nero
+et al., 2020), STITCH (Szklarczyk et al., 2016), and SIDER (Kuhn
+et al., 2016) are widely used in biomedical research,
+which
+support applications including disease gene prediction (Vilela
+et al., 2023), drug-target interaction (Qiao et al., 2024), and
+drug-drug correlation (Wang et al., 2024b).
+Many such tasks demand for practical techniques of Knowledge
+Graph Completion (KGC)
+(Chen et al., 2020) and Knowledge
+Graph Reasoning (KGR)
+(Liang et al., 2024). Fundamentally,
+both techniques involve predicting the answer to a query of the
+form (h, r, ?) (Meng et al., 2024), to identify the missing tail entity.
+While both may be considered as link prediction, they differ: KGC
+primarily predicts missing direct links (entities or relations) by
+identifying patterns in existing graph data. Extending this, KGR
+is a broader task that infers complex or multi-step knowledge,
+© The Author 2025. Published by Oxford University Press. All rights reserved. For permissions, please e-mail: journals.permissions@oup.com
+1
+arXiv:2507.14468v2  [cs.AI]  22 Jul 2025
+2
+Lin et al.
+often employing logical inference mechanisms, rule-based systems,
+or multi-hop path analysis to deduce unstated facts. Thus, KGC
+focuses on completing the KG based on observed patterns, while
+KGR derives new insights through deeper inferential processes.
+For KGC and KGR, Knowledge Embedding (KE) and Graph
+Structure Propagation (GSP) are prevalent approaches, as detailed
+in foundational works (Tang et al., 2024; Liang et al., 2024).
+KE, often termed a latent feature model (Nickel et al., 2015),
+embeds entities and relations into continuous vector spaces,
+capturing semantic information to score candidate entities directly.
+For instance,
+RotatE (Sun et al., 2019) models relations as
+rotations in complex space (h ◦r ≈t), while CP-N3 (Lacroix
+et al., 2018) enhances performance by factorizing higher-order
+interactions. While KE techniques excel at capturing semantics,
+they
+often
+overlook
+structural
+patterns—such
+as
+multi-hop
+paths—limiting their reasoning capabilities over complex, multi-
+relational biomedical graphs (Peng et al., 2023; Liu et al., 2022).
+In
+contrast,
+GSP
+borrows
+its
+main
+architecture
+from
+Graph Neural Networks (GNNs)
+(Yu et al., 2021),
+which
+have significantly advanced network analysis by propagating
+messages between entities, thereby partially capturing topological
+information. Representatives such as GNN4DM (G´ezsi and Antal,
+2024) demonstrate the power of these approaches in tasks like
+discovering overlapping functional disease modules through the
+integration of network topology and genomic data.
+However,
+these methods, while adept at structural modeling, often tend
+to overemphasize topological information at the expense of deeper
+semantic associations and the rich content of relations.
+Recognizing
+the
+limitations
+of
+traditional
+KE
+and
+GSP
+methods, and with the advent of powerful pre-trained language
+models (LMs),
+more advanced approaches have emerged for
+KGC and KGR. These methods often seek to incorporate richer
+semantic understanding directly from textual data or find novel
+ways of integrating semantic and structural information, moving
+beyond the KE or GSP paradigms alone. For instance, KG-
+BERT (Yao et al., 2019) uses pre-trained LMs to score textualized
+triples, prioritizing semantics but with high computational costs.
+Similarly, LASS (Shen et al., 2022) attempts fusion by embedding
+natural language semantics with graph structure through LM fine-
+tuning and probabilistic reconstruction loss, yet its loss-mediated
+interaction limits deeply adaptive integration.
+While these approaches significantly advanced semantic and
+structural
+learning
+for
+KGC
+and
+KGR,
+they
+underscore
+a
+persistent challenge: achieving deep, dynamic coupling where
+semantic guidance and structural propagation synergistically
+co-evolve.
+Many methods,
+despite innovations,
+still struggle
+with fully reciprocal, adaptive refinement between rich semantic
+understanding and nuanced structural learning.
+This critical
+gap—the difficulty in developing a framework that enables a
+mutually enhancing co-evolution between semantic and structural
+learning—motivates BioGraphFusion. BioGraphFusion is a novel
+framework designed for such a profound synergistic integration,
+which
+leverages
+semantic
+insight,
+primarily
+drawing
+from
+principles of KE for global context, and combines it with dynamic
+structural reasoning, inspired by GSP techniques. The overall goal
+is for joint optimization of node and relation embeddings, thereby
+addressing the limitations in achieving the deep and adaptive
+semantic-structural interplay seen in prior methods.
+BioGraphFusion actualizes this for biomedical KGs by weaving
+global semantic modeling with dynamic structural reasoning.
+Initially, a Canonical Polyadic (CP) decompositio (Kolda and
+Bader, 2009) module establishes a global semantic foundation,
+extracting low-dimensional embeddings capturing overarching
+biological associations and cross-domain interactions. This global
+semantic framework then actively steers structural learning.
+An LSTM-based gating mechanism dynamically refines relation
+embeddings during message propagation,
+adapting them to
+evolving semantic contexts and enabling the model to better
+capture long-range dependencies crucial for complex biological
+pathways.
+Further,
+a
+query-guided
+subgraph
+construction
+component focuses structural exploration on pertinent biological
+regions, ensuring message passing and representation learning
+concentrate on relevant interactions. Finally, a hybrid scoring
+mechanism orchestrates synergy between these semantic and
+structural representations. Such balanced integration empowers
+the semantic model to guide dynamic refinement of graph-based
+representations,
+fostering deep optimization of intricate edge
+embeddings.
+This process ensures a reciprocal and adaptive
+refinement cycle, where semantic understanding and structural
+learning iteratively enhance each other.
+2. Materials and methods
+2.1. Dataset Overview and Task Design
+To advance biological knowledge graph completion and reasoning,
+we introduce three tasks integrating multi-source biomedical data.
+First, the Disease-Gene Association Prediction task (Wang et al.,
+2024a) identifies missing disease-related genes by leveraging a
+primary dataset enriched with drug-disease and protein-chemical
+information.
+Second,
+the
+Protein-Chemical
+Interaction
+task
+focuses on identifying compounds that interact with specific
+proteins, using core interaction data supplemented by auxiliary
+associations. Finally, the Cross-Medical Ontology Reasoning task
+employs the UMLS Terminology (Bodenreider, 2004). This task
+functions as link prediction: given a head concept and relation
+type,
+the model predicts the tail concept,
+inferring diverse
+ontological relationships, including hierarchical and associative
+links. Detailed dataset statistics and integration protocols for all
+tasks are summarized in Supplemental Materials Section 1 (SM1).
+2.2. Overview of BioGraphFusion
+BioGraphFusion
+achieves
+high
+performance
+in
+biomedical
+completion and reasoning by fostering a deep synergistic interplay
+between
+Knowledge
+Embedding
+(KE)
+and
+Graph
+Structure
+Propagation (GSP) principles. By incorporating global semantic
+knowledge
+from
+knowledge
+embeddings
+to
+guide
+the
+graph
+propagation process, our proposal effectively captures both direct
+and long-range relationships in biomedical graphs.
+As illustrated in Fig. 1,
+BioGraphFusion comprises three
+key
+components.
+First,
+Global
+Biological
+Tensor
+Encoding
+(Section 2.2.2) employs Canonical Polyadic decomposition to
+extract low-dimensional embeddings that encode latent biological
+associations. Second, Query-Guided Subgraph Construction and
+Propagation (Section 2.2.3) iteratively builds a query-relevant
+subgraph by refining relations and propagating context-specific
+embeddings. Finally, these complementary aspects are unified
+through
+a
+hybrid
+scoring
+mechanism
+(Section
+2.2.4).
+This
+mechanism integrates KE’s direct global semantic contributions
+with structural insights from the KE-informed GSP process,
+enabling a nuanced assessment of candidate predictions.
+3
+Node
+Relation
+A. Knowledge Graph Construction
+Fact Triples 
+Query Triples 
+Chemical
+(
+,
+, )
+n
+n
+n
+h r t
+Drug
+Disease
+Protein
+Gene
+Medical Entity
+E. Prediction Example
+C0006118
+Brain Neoplasms
+SMO
+High
+|
+Score
+Ranking
+|
+low
+DLL1
+CCND1
+IFNG
+B1. Global Tensor Decomposition
+…
+…
+B2. Query Initialization
+B. Query-specific Processing
+D. Final Subgraph
+C. Subgraph Construction and Propagation
+C. Query-Guided Subgraph Construction and Propagation
+LSTM
+LSTM
+C1. Relation Refinement with Contextual Guidance 
+C2. Query-Attention Propagation
+Message Aggregation
+FC Layer 
+Tanh
+FC Layer 2
+ReLU
+Sigmoid
+FC Layer 1
+Global Guidance
+C3. Biological Relevance Filtering
+Fig. 1: Overview of the BioGraphFusion framework. (A) Knowledge Graph Construction: Integrating biomedical datasets to form a unified
+knowledge graph for downstream tasks. (B) Query-Specific Processing: A two-step process involving (B1) Global Tensor Decomposition
+that captures latent biological associations, and (B2) Query Initialization that guides the guide the subsequent process. (C) Subgraph
+Construction and Propagation: Iteratively builds a query-relevant subgraph through neighborhood expansion and propagation, including
+(C1) Relation Refinement via LSTM, (C2) Query-Attention Propagation with context-based attention weights, and (C3) Biological
+Relevance Filtering to select the most pertinent entities. (D) Final Subgraph. (E) Scoring Integration that balances structural-semantic
+information and Prediction Example that selects the most promising predictions, with a focus on Brain Neoplasms.
+2.2.1. Notations and Problem Setup
+Let G = (V, R, F, Q) be a biomedical knowledge graph integrating
+diverse fact triples from multiple sources for various tasks, as
+shown in Fig. 1(A). Here, V is the set of entities and R the set
+of relations. F is the set of factual triples, F = {(h, r, t) | h, t ∈
+V, r ∈R}, where head entity h and tail entity t are connected by
+relation r. To enhance graph diversity and model robustness, we
+also incorporate triples with reverse and identity relations (Zhang
+and Yao, 2022; Zhang et al., 2023). Q contains query triples,
+Q = {(qe, qr, qa) | qe, qa ∈V, qr ∈R}. Each query is of the form
+(qe, qr, ?), with qa as the unknown target entity. The objective for
+such queries is to predict qa, a task central to KGC and KGR
+aimed at enriching the KG.
+2.2.2. Tensor Decomposition and Query Initialization
+Effective biomedical knowledge analysis hinges on understanding
+the global semantic landscape to foster a dynamic interplay
+between semantic insights and structural patterns. BioGraphFusion
+initiates this by establishing a global semantic foundation through
+tensor
+decomposition
+of
+the
+entire
+knowledge
+graph.
+This
+initial step provides a rich context essential for the subsequent
+integration of structural patterns with semantic understanding.
+For this critical stage,
+we employ Canonical Polyadic (CP)
+decomposition
+(Kolda
+and
+Bader,
+2009).
+CP
+is
+chosen
+as
+it directly factorizes the graph’s adjacency tensor to derive
+meaningful, low-dimensional latent embeddings for entities and
+relations. This factorization process adeptly captures fundamental
+relationships. Moreover, CP’s formulation as a low-rank tensor
+approximation offers a balance between model expressiveness and
+parsimony, ensuring computational efficiency and scalability vital
+for processing large-scale biomedical knowledge graphs.
+The graph tensor T ∈R|V|×|R|×|V| is factorized via CP into
+three matrices: Eh ∈R|V|×D, Er ∈R|R|×D, and Et ∈R|V|×D.
+These matrices capture the latent semantic associations between
+entities and relations (Fig. 1 (B1)). The compatibility of any triple
+(h, r, t) is then computed as:
+ϕ(h, r, t) =
+D
+X
+d=1
+e(d)
+h
+· e(d)
+r
+· e(d)
+t
+(1)
+where e(d)
+h , e(d)
+r , and e(d)
+t
+are the d-th components of the respective
+embeddings.
+Subsequently, BioGraphFusion initializes query-specific repres-
+entations directly from the CP-extracted matrices, ensuring a
+semantically meaningful starting point. Specifically, given a query
+(qe, qr, ?),
+the entity embedding eqe
+and the initial relation
+embedding e0
+qr
+are retrieved from Eh
+and Er,
+respectively
+(Fig. 1 (B2)). The initial node representation h0 is thus set to
+eqe, establishing a query-grounded context before neighborhood
+expansion. Similarly, all entity and relation embeddings in the
+graph,
+including those encountered during propagation,
+are
+initialized from CP decomposition, preserving global structural
+information for subgraph construction and message passing.
+2.2.3. Query-Guided Subgraph Construction
+Biomedical knowledge graphs are vast and noisy,
+making it
+computationally impractical and error-prone to process the entire
+graph for each query. To address this, we employ a query-guided
+subgraph construction mechanism that selectively expands along
+semantically relevant paths (see Fig. 1 (C)), ensuring biological
+meaningfulness while filtering out spurious connections.
+Neighborhood
+Expansion At each layer ℓ,
+the model
+expands the neighborhood for further propagation. Initially, at
+ℓ= 0, the entity set V(0) contains only the query node qe. For
+each entity h at layer ℓ−1, we construct the candidate set C(ℓ) by
+4
+Lin et al.
+aggregating all direct neighbors of the current nodes:
+C(ℓ) =
+[
+h∈V(ℓ−1)
+{t | (h, r, t) ∈F}
+(2)
+In this step, the model gathers all possible entities that can
+serve as neighbors for the current nodes during propagation. On
+that basis, standard GNNs often update each node representation
+iteratively by gathering information from the surrounding entities.
+We also follow this step in our approach to constructing a
+candidate set C(ℓ) to prepare for message propagation.
+Contextual
+Relation
+Refinement
+In
+many
+existing
+approaches,
+relation embeddings remain static or minimally
+updated, failing to account for contextual variations. However,
+in biomedical knowledge graphs, relations are rarely fixed; their
+meaning is shaped by the entities involved and the reasoning
+path. For instance, the relation “disease gene” can imply different
+biological mechanisms depending on the specific genes or proteins
+connected. Furthermore, static embeddings struggle to model
+multi-step interactions, such as indirect associations mediated by
+proteins or chemicals.
+To mitigate these limitations,
+we introduce a Contextual
+Relation Refinement (CRR) module.
+LSTMs are chosen for
+their stateful transformation and gating mechanisms,
+which
+allow them to effectively model how relation meanings vary
+with entity context—a common scenario in biomedical KGs.
+Unlike simpler recurrent units (e.g., RNNs, GRUs), LSTMs excel
+at refining relation representations based on evolving semantic
+contexts from connected entities.
+This yields context-specific
+embeddings better suited for the dynamic, multi-step nature of
+biomedical relationships, iteratively updating relation embeddings
+as well as capturing context-dependent semantics and long-range
+dependencies (Wang et al., 2024a). Specifically, for each triple
+(h, r, t), the LSTM updates the relation embedding eℓ
+r at layer
+ℓ, using the previous embedding eℓ−1
+r
+as input and the head entity
+embedding eh as the hidden state:
+eℓ
+r = LSTM (eℓ−1
+r
+, eh)
+(3)
+Through the internal gating mechanisms (including the forget
+gate f, input gate i, candidate memory cell ˜c, memory cell c, and
+output gate o), LSTM selectively processes and retains relevant
+contextual information. It tailors the relation embedding to the
+connected entities. Similarly, the query relation eℓ
+qr is updated by:
+eℓ
+qr = LSTM (eℓ−1
+qr , eqe)
+(4)
+The dual LSTM adaptively refines both head-node and query
+relation representations based on semantic context from their
+respective entity embeddings. This dynamic modulation helps the
+model grasp nuanced relationships. Comparative experiments (see
+SM8 for details) have confirmed that LSTMs are better than
+other alternatives, validating the capability of achieving deep
+semantic-structural coupling central to our model.
+Query-Attention Propagation Inspired by RED-GNN (Zhang
+and Yao, 2022), each candidate node t aggregates messages from
+its neighbors using a query-attentive mechanism (Fig. 1 (C2)).
+Specifically, the node representation at layer ℓis updated as
+hℓ
+t(qe, qr) = δ
+
+Wℓ·
+X
+(h,r,t)∈C(ℓ)
+αℓ
+h,r,t|qr
+ hℓ−1
+h
+(qe, qr) + eℓ
+r
+
+
+
+where Wℓis a trainable weight matrix and δ denotes the Tanh
+activation function. The attention weight αℓ
+h,r,t|qr, computed as
+αℓ
+h,r,t|qr = σ
+ wℓ
+α
+⊤ReLU Wℓ
+α · 
+hℓ−1
+h
+(qe, qr) + eℓ
+r + eℓ
+qr
+
+integrates both local neighborhood features and the global query
+context, with eℓ
+qr being the query-specific relation embedding
+refined by the LSTM module.
+Biological Relevance Filtering Following AdaProp (Zhang
+et al., 2023), after node representations are updated, we compute
+an importance score for each candidate node t:
+st = Wsamp · hℓ
+t(qe, qr)
+(5)
+This score quantifies the biological relevance of each node. We
+then filter the candidate set by retaining only the top K nodes.
+During training, the top K nodes are selected via a differentiable
+Gumbel-Softmax, while during inference, a conventional Softmax
+selection is applied:
+V(ℓ) = TopK st | t ∈C(ℓ)
+.
+(6)
+For details on gradient-preserved hard selection, see SM2.
+Final Subgraph Construction Building upon this iteration,
+the final subgraph Gq is constructed over ℓlayers (Fig. 1 (D)):
+Gq = (Vq, Eq)
+(7)
+where
+Vq
+denotes
+the
+set
+of
+selected
+entities
+and
+Eq
+the
+relationships among them. This refined subgraph, enriched with
+contextually relevant information, is then used for downstream
+tasks such as knowledge graph completion and reasoning, ensuring
+that only the most pertinent interactions are propagated.
+2.2.4. Joint Formulation of Scoring and Loss Functions
+Focusing only on graph message or knowledge representation in
+the final scoring function may miss complementarity. Pure graph
+modeling may overlook deeper semantic relationships, whereas
+embedding methods might not capture fine-grained structural
+details. To better leverage the advantages of both perspectives,
+BioGraphFusion incorporates elements from knowledge embedding
+and graph propagation into its final scoring function. For a triple
+(qe, qr, qa), our score is defined as a weighted sum (see Fig. 1 (E)):
+˜f(qe, qr, qa) = λ f(qe, qr, qa) + (1 −λ) ϕ(qe, qr, qa)
+(8)
+where λ
+∈
+[0, 1] balances the contributions from two key
+components.
+f(·) represents the score derived from the KE-
+informed graph propagation process, capturing contextualized
+structural patterns, whereas ϕ(·) provides a direct global semantic
+score obtained through tensor decomposition. The hybrid design
+combines semantic knowledge with graph propagation through
+bidirectional interactions to refine structural representations. The
+component f(qe, qr, qa) is computed from the final representation
+of the target entity obtained via iterative message passing:
+f(qe, qr, qa) = w⊤hℓ
+qa(qe, qr)
+(9)
+and the tensor decomposition–based score, capturing the global
+biological context, is given by
+ϕ(qe, qr, qa) =
+D
+X
+d=1
+e(d)
+qe · e(d,ℓ)
+qr
+· e(d)
+qa
+(10)
+5
+Table 1. Evaluation Results of BioGraphFusion on Biomedical Completion and Reasoning.
+Type
+Models
+Disease-Gene Prediction
+Protein-Chemical Interaction
+Medical Ontology Reasoning
+MRR
+Hit@1
+Hit@10
+MRR
+Hit@1
+Hit@10
+MRR
+Hit@1
+Hit@10
+KE
+RotatE
+0.263
+0.202
+0.381
+0.606
+0.512
+0.778
+0.925
+0.863
+0.993
+ComplEx
+0.392
+0.336
+0.498
+0.356
+0.236
+0.594
+0.630
+0.493
+0.893
+DistMult
+0.258
+0.198
+0.375
+0.120
+0.045
+0.276
+0.569
+0.461
+0.797
+CP-N3
+0.207
+0.151
+0.312
+0.089
+0.029
+0.189
+0.300
+0.134
+0.750
+KDGene
+0.384
+0.321
+0.523
+0.085
+0.023
+0.170
+0.260
+0.100
+0.708
+GNN
+pLogicNet
+0.228
+0.173
+0.335
+0.591
+0.564
+0.630
+0.842
+0.772
+0.965
+CompGCN
+0.252
+0.191
+0.367
+0.614
+0.576
+0.676
+0.907
+0.867
+0.994
+DPMPN
+0.293
+0.235
+0.393
+0.632
+0.614
+0.729
+0.930
+0.899
+0.980
+AdaProp
+0.345
+0.296
+0.438
+0.662
+0.631
+0.781
+0.969
+0.956
+0.995
+RED-GNN
+0.389
+0.332
+0.468
+0.662
+0.613
+0.782
+0.964
+0.946
+0.990
+Ensemble
+KG-BERT
+-
+-
+-
+-
+-
+-
+0.774
+0.649
+0.967
+StAR
+0.247
+0.192
+0.361
+0.426
+0.326
+0.700
+0.834
+0.720
+0.976
+LASS
+0.211
+0.167
+0.324
+0.401
+0.314
+0.691
+0.908
+0.952
+0.983
+ours
+0.429∗∗
+0.377∗∗
+0.529∗
+0.702∗∗
+0.657∗
+0.795∗
+0.974
+0.963∗
+0.991
+’-’ means unavailable results. The best results are highlighted in bold and the second-best results are underlined. ’∗’ denotes statistically
+improvements over the best baseline (∗: p-value< 0.01; ∗∗: p-value< 0.001; paired t-test on 5 random seeds).
+with e(d)
+qe , e(d)
+qa , and e(d,ℓ)
+qr
+denoting the d-th components of the
+CP embeddings for the query entity,
+target entity,
+and the
+refined query relation (updated at layer ℓusing an LSTM that
+incorporates eqe), respectively.
+To
+train
+BioGraphFusion
+for
+biomedical
+completion
+and
+reasoning, we design a composite loss function with two objectives:
+(i) to maximize the likelihood of true relationships and (ii) to learn
+robust, generalizable embeddings. The primary component is a
+multi-class log-loss that encourages the model to assign higher
+scores to positive triples from the training set Ftra compared to
+negative candidates. Specifically, the log-loss is defined as:
+Llog =
+X
+(qe,qr,qa)∈Ftra
+"
+−˜f(qe, qr, qa) + log
+X
+t∈V
+exp  ˜f(qe, qr, t)
+#
+In addition,
+following CP-N3 (Lacroix et al., 2018),
+we
+incorporate an N3 regularization term. The primary motivation
+for this is to penalize large magnitudes in CP embeddings, thereby
+mitigating overfitting:
+RN3 = |eqe|3
+3 + |eqrℓ|3
+3 + |eqa|3
+3
+(11)
+To
+further
+validate
+our
+choice
+of
+N3,
+ablation
+studies
+on
+regularization were conducted (see SM8). These studies have
+confirmed the robustness of our model architecture, demonstrating
+that the model performs well and outperforms baselines even
+when employing naive regularizations (L1 or L2). Notably, the N3
+regularization, generally yields superior results over alternatives.
+This advantage is attributed to the selection of the optimized
+configuration, reinforcing its suitability for our approach.
+Thus, the overall loss is given by:
+L = Llog + γRN3
+(12)
+where γ controls the regularization strength.
+3. Experiments and Results
+3.1. Implementation Details
+Experimental Setup. All experiments were implemented in
+Python using PyTorch v1.12.1 and PyTorch Geometric v2.0.9 on a
+single NVIDIA RTX 3090 GPU. Key hyperparameters were tuned
+over specific ranges; detailed configurations are provided in SM3.
+Evaluation Metrics and Baseline Competitors. Following
+(Zhang et al., 2023; Zhang and Yao, 2022), we evaluate model
+performance using filtered ranking-based metrics: mean reciprocal
+rank (MRR) and Hit@k
+(with k
+=
+1 and 10).
+Detailed
+definitions of these metrics are provided in SM4. We benchmark
+BioGraphFusion
+against
+state-of-the-art
+methods
+from
+three
+major categories: Knowledge Embedding (KE) models, Graph
+Structure Propagation (GNN-based) approaches, and Ensemble
+methods. All baselines are implemented using publicly available
+code from the respective authors. Comprehensive descriptions of
+these baselines and implementation details are provided in SM5.
+Datasets and Data Integration. The Disease-Gene Prediction
+task uses 130,820 disease-gene associations from DisGeNET (Pi˜nero
+et al., 2020), partitioned 7:2:1 (training:validation:test) based
+on a specific fold from the KDGene (Wang et al., 2024a) 10-
+fold cross-validation setup.
+For comprehensive generalization
+assessment, we also conduct full 10-fold cross-validation (see SM6).
+Supplementary data include 14,631 drug-disease relationships
+from SIDER (Kuhn et al., 2016) and 277,745 protein-chemical
+interactions from STITCH (Szklarczyk et al., 2016). The Protein-
+Chemical Interaction task uses 23,074 interaction triples from
+STITCH, filtered to the top 100 most frequent genes (Wang et al.,
+2024b), and partitioned 7:2:1. To address data imbalance from
+extensive background knowledge, we cap supplementary samples
+at 15,000 for Disease-Gene Association Prediction and 10,000 for
+Protein-Chemical Interaction. The Medical Ontology Reasoning
+task is based on the UMLS Terminology (Bodenreider, 2004), pre-
+split into background, training, validation, and test sets as in prior
+work (Zhang et al., 2023; Zhang and Yao, 2022). Further dataset
+and task details are in SM1.
+6
+Lin et al.
+BGF-w/o GSP
+BGF-R
+BGF-w/o CRR 
+BGF-w/o 
+BioGraphFusion
+0.30
+0.35
+0.40
+0.45
+0.50
+0.55
+Disease-Gene Prediction
+BGF-w/o GSP
+BGF-R
+BGF-w/o CRR 
+BGF-w/o 
+BioGraphFusion
+0.55
+0.60
+0.65
+0.70
+0.75
+0.80
+ Protein-Chemical Interaction
+BGF-w/o GSP
+BGF-R
+BGF-w/o CRR 
+BGF-w/o 
+BioGraphFusion
+0.85
+0.88
+0.91
+0.94
+0.97
+1.00
+Medical Ontology Reasoning
+MRR
+Hit@1
+Hit@10
+Fig. 2: Ablation study results for BioGraphFusion (BGF) across three biomedical reasoning tasks: disease-gene prediction, protein-
+chemical interaction, and medical ontology reasoning. Performance metrics include MRR, Hit@1, and Hit@10. The full model is compared
+against four ablated variants: BGF-w/o GSP, BGF-R, BGF-w/o CRR, and BGF-w/o ϕ.
+3.2. Overall Performance
+Table 1 shows BioGraphFusion consistently outperforms KE,
+GNN, and Ensemble baselines across all three tasks. Regarding
+computational efficiency, SM7 compares the inference time and
+MRR performance of BioGraphFusion with competitive baseline
+models on the UMLS dataset, analyzing the trade-off between their
+predictive performance and computational efficiency.
+Knowledge Embedding Methods reveal limitations in pure
+embedding approaches. ComplEx achieves moderate success in
+Disease-Gene Association Prediction (MRR 0.392) by modeling
+asymmetric relations, while RotatE (MRR 0.263) struggles despite
+its sophisticated rotation-based relation modeling. CP-N3’s poor
+performance in Protein-Chemical Interaction is more telling.
+While CP-N3 uses tensor decomposition, a principle foundational
+to our approach,
+its standalone application,
+lacking crucial
+integration with structural learning, highlights the limitations
+of relying solely on this embedding technique. Even KDGene,
+engineered for disease-gene associations using interactional tensor
+decomposition,
+achieves only 0.384 MRR, showing semantic
+modeling alone, without adaptive structural guidance, cannot fully
+capture intricate biomedical dependencies.
+Graph
+Neural
+Network
+Approaches
+show
+different
+strengths
+and
+limitations.
+RED-GNN
+performs
+strongly
+in
+Disease-Gene Prediction (MRR 0.389),
+and AdaProp excels
+in Protein-Chemical Interaction (MRR 0.662). However, their
+weakness of reliance on structural patterns is apparent when
+compared to BioGraphFusion,
+which demonstrates consistent
+improvements in these tasks. While AdaProp has a slight edge
+in highly structured UMLS tasks, the merit diminishes in more
+semantically complex biomedical scenarios. While effective for
+local connectivity, pure structural propagation lacks the global
+semantic context needed to interpret biological relationships.
+Ensemble
+Methods
+exhibit
+limitations
+in
+biomedical
+contexts. KG-BERT performs moderately in medical ontology
+reasoning (MRR 0.774), while StAR and LASS show limited
+effectiveness in Disease-Gene Association Prediction.
+A key
+constraint is their textual encoding components’ limitation by
+sparse entity information—biomedical entities are often identifiers
+or technical terms,
+not descriptive text.
+This yields shallow
+semantic embeddings, hindering effective structural integration.
+While these methods try to bridge semantic understanding with
+structural patterns (StAR via Siamese encoding, LASS via joint
+fine-tuning), their limitations show effective biomedical ensemble
+integration needs more than combining components.
+BioGraphFusion’s Superior Performance stems from its
+innovative deep coupling between semantic understanding and
+structural learning. Unlike existing methods that combine these
+paradigms statically, our model enables dynamic co-evolution
+where semantic insights guide structural reasoning while structural
+discoveries enrich semantic understanding. This deep coupling
+effectively models the intricate, context-dependent relationships in
+biomedical knowledge graphs, resulting in significant performance
+improvements across diverse tasks.
+3.3. Ablation Study
+To evaluate individual component contributions in BioGraphFusion,
+we
+performed
+ablation
+studies
+on
+key
+modules
+for
+global
+semantics, graph structure propagation, and their hybrid scoring.
+Four
+targeted
+variants
+were
+implemented:
+(i)
+Removal
+of
+Graph Structure Propagation (BGF-w/o GSP): removes dynamic
+structural learning to assess GSP’s role in our model;
+(ii)
+Random Query Encoding (BGF-R), in which the CP-derived
+query embeddings are replaced with randomly initialized vectors,
+disrupting
+semantic
+alignment;
+(iii)
+Removal
+of
+Contextual
+Relation Refinement (BGF-w/o CRR), which omits the LSTM-
+based updates for relation embeddings; and (iv) Elimination of
+the Tensor Decomposition Score (BGF-w/o ϕ), which excludes
+the CP-based branch from the hybrid scoring function, leaving
+only the contextualized structural patterns to drive the scoring
+mechanism.
+3.3.1. Performance Comparison
+Fig.
+2
+summarizes
+the
+ablation
+study
+results,
+highlighting
+the
+distinct
+contributions
+of
+structural
+propagation
+(GSP)
+and knowledge embedding (KE) components.
+Removing the
+GSP module (BGF-w/o GSP) leads to the most pronounced
+performance drop across all tasks,
+underscoring the essential
+role of dynamic structural learning in capturing topological
+dependencies and facilitating effective knowledge integration. This
+result demonstrates that structural propagation is indispensable
+for modeling complex biomedical relationships that rely on multi-
+hop and context-dependent interactions.
+In contrast, the other three ablation variants—random query
+encoding (BGF-R), removal of contextual relation refinement
+7
+Fig. 3: t-SNE visualization of protein embeddings. Each subfigure shares the same proteins and each color represents proteins interacting
+with the same chemical compound, labeled by PubChem CID.
+(BGF-w/o CRR), and elimination of the tensor decomposition
+score (BGF-w/o ϕ)—primarily target KE-related modules. Each of
+these modifications results in significant but distinct performance
+declines. BGF-R confirms the necessity of CP-based semantic
+initialization for maintaining meaningful entity representations;
+BGF-w/o
+CRR
+highlights
+the
+importance
+of
+LSTM-driven
+contextual
+refinement
+for
+relation
+embeddings;
+and
+BGF-
+w/o ϕ demonstrates that optimal performance requires balancing
+global semantic signals with graph-derived structural patterns.
+Collectively, these findings confirm our model’s success stems
+from the synergy between structural propagation and semantic
+embedding, not from either component alone.
+3.3.2. Semantic Embedding Visualization
+To assess KE components’ impact on semantic representation,
+we
+visualize
+protein embeddings from the Protein-Chemical
+Interaction task using t-SNE (Fig. 7). We selected 10 chemical
+compounds (each linked to 50–100 proteins) and compared the
+full BioGraphFusion model with ablation variants BGF-w/o GSP,
+BGF-R, and BGF-w/o CRR. The BGF-w/o ϕ variant was
+excluded as its scoring function primarily affects prediction scores,
+not embedding coordinates. Protein embeddings were obtained via
+post-propagation representations for GSP variants (full, BGF-R,
+BGF-w/o CRR), and via final CP embeddings for BGF-w/o GSP.
+The t-SNE visualizations in Fig. 7 illustrate progressive
+improvement
+in
+semantic
+coherence
+as
+key
+architectural
+components are integrated.
+The full BioGraphFusion model
+produces optimally tight and well-separated protein embeddings
+for each chemical compound, showing strong intra-cluster cohesion
+and inter-cluster separation. Conversely, BGF-w/o GSP (relying
+solely
+on
+initial
+CP
+embeddings)
+shows
+the
+most
+diffuse
+clustering with indistinct inter-group boundaries,
+highlighting
+GSP’s role in refining entity distinctions. BGF-R (with random
+query embeddings) exhibits clustering with significant overlap,
+confirming that effective GSP depends on high-quality initial
+semantic representations. BGF-w/o CRR shows clearer clustering
+than the previous two variants (benefiting from CP initialization
+and GSP), yet its clusters are less separated than the full model,
+emphasizing the crucial role of LSTM-driven relation refinement
+in forming clear, coherent clusters. These results confirm that
+CP initialization, dynamic GSP, and LSTM relation refinement
+each make unique contributions to meaningful biomedical entity
+representations. Visualization results for competitive baselines
+in SM9 generally show more diffuse embedding clusters, further
+demonstrating BioGraphFusion’s effectiveness.
+3.4. Hyperparameter Sensitivity Analysis
+We conducted extensive hyperparameter tuning on the disease-
+gene prediction task to examine the impact of key parameters
+on the final performance of BioGraphFusion. In our experiments,
+we varied the batch size, embedding dimension D, fusion weight
+λ, and the number of propagation steps ℓ. Our results on the
+disease-gene dataset indicate optimal performance with a batch
+size of 16, an embedding dimension D = 32, a fusion weight
+λ = 0.7, and ℓ= 6 propagation steps. Notably, the model enjoys
+robustness to batch size variations, while an embedding dimension
+of D = 32 is found to effectively capture semantic details without
+over-parameterization. Tuning λ and ℓreveals critical balances:
+λ = 0.7 optimally harmonizes structural propagation with global
+semantic embeddings, while ℓ= 6 propagation step effectively
+balances information aggregation against over-smoothing. This
+careful hyperparameter calibration is vital for maximizing model
+performance on biomedical tasks. Further details are in SM10.
+3.5. Case Analysis of CMM1
+3.5.1. Pathogenic Gene Prediction
+We used BioGraphFusion to predict ten candidate genes for
+CMM1, including two known disease-associated genes (CDKN2D
+and CDK4) and eight novel candidates (Table 2). To validate these
+predictions (Pred.), we cross-referenced the candidates against
+three independent databases: PubMed (using PMIDs), MalaCards
+and ClinVar. We found that seven of the eight novel candidate
+genes—AKT1 (rank 3), NF1 (rank 5), OCA2 (rank 6), TP53
+(rank 7), TYRP1 (rank 8), TYR (rank 9), and NRAS (rank
+10)—are documented in both MalaCards and ClinVar, indicating
+established associations with melanoma or related conditions.
+Additionally, PubMed searches revealed literature support for the
+co-occurrence of CMM1 with all eight novel candidates.
+3.5.2. Pathway Enrichment and PPI Analysis
+To evaluate the biological relevance of both known genes and
+the predictions for CMM1,
+we performed a KEGG pathway
+enrichment analysis.
+Fig. 4(A) presents the top 12 enriched
+pathways; notably, the “Melanoma” pathway shows the strongest
+enrichment (FDR = 2.20e-26) with 18 prominently represented
+genes. In addition, pathways associated with Glioma and Non-
+small cell lung cancer were also enriched, further supporting the
+biological plausibility of the candidate genes.
+8
+Lin et al.
+    
+    
+      
+    
+       
+    
+     
+    
+    
+     
+    
+    
+      
+    
+    
+     
+   
+      
+    
+   
+      
+   
+      
+      
+   
+      
+    
+      
+     
+      
+    
+    
+      
+   
+    
+      
+    
+     
+      
+    
+      
+    
+     
+       
+     
+   
+     
+      
+      
+    
+    
+    
+    
+    
+    
+   
+Pathway predicted by BioGraphFusion 
+B
+C
+Genes in the train set
+Genes predicted by BioGraphFusion
+Genes in the test set and 
+predicted by BioGraphFusion
+Genes predicted by BioGraphFusion
+and evidenced association with CMM1
+Target 
+Gene
+Query
+Disease
+Disease-Gene
+Interaction
+Chemical-Protein 
+Interaction
+Glioma
+Non-small cell
+lung cancer
+Endocrine resistance
+Chronic myeloid
+leukemia
+Bladder cancer
+Endometrial cancer
+Prostate cancer
+MicroRNAs in cancer
+Gastric cancer
+FoxO signaling
+pathway
+Melanoma
+EGFR tyrosine kinase
+inhibitor resistance
+A
+4.75
+5.00
+5.25
+5.50
+5.75
+6.00
+6.25
+6.50
+Signal
+14
+17
+20
+Gene count
+KEGG Pathways enrichment
+21
+22
+23
+24
+25
+26
+(FDR)
+Disease
+Chemical
+Protein
+（Gene Product）
+Fig. 4: Case study. (A) Analysis of KEGG Pathway Enrichment for the benchmark. The bubble chart shows significantly enriched
+pathways related to melanoma pathways.(B) Link visualization of known and predicted genes for melanoma on the PPI network.(C)
+Pathway predicted by BioGraphFusion from query disease CMM1 to melanoma-associated genes reveals a biologically plausible
+mechanistic link between CMM1 and established melanoma genes.
+Table 2. For CMM1, top 10 candidate gene predicted by BioGraphFusion.
+Rank
+Pred.
+PMIDs
+MalaCards
+ClinVar
+1
+∗CDKN2D
+-
+-
+-
+2
+∗CDK4D
+-
+-
+-
+3
+AKT1
+38275910,39659584
+✓
+✓
+4
+HPS1
+15982315,23084991
+5
+NF1
+38179395,37965626
+✓
+✓
+6
+OCA2
+37646013,37568588
+✓
+✓
+7
+TP53
+24919155,38667459
+✓
+✓
+8
+TYRP1
+37646013,37239381
+✓
+✓
+9
+TYR
+19578364,18563784
+✓
+✓
+10
+NRAS
+38275910,38183141
+✓
+✓
+*These genes predicted by BioGraphFusion are in the test set
+We further employed CMM1 as an illustrative example to
+evaluate the network proximity and functional coherence between
+genes in the train set and the candidate genes predicted by
+BioGraphFusion. For this analysis, we retain all 11 genes from the
+training set and 2 genes from the testing set of the DisGeNET
+dataset, and extract the top 50 candidate genes predicted by
+BioGraphFusion. The resulting Protein-Protein Interaction (PPI)
+network (Fig. 4(B)) exhibits markedly denser connectivity than
+would be expected by chance (P = 4.669E-86, binomial test).
+Detailed connectivity statistics and analysis are provided in SM11.
+This dense interconnectivity suggests that the candidates are
+functionally related to the known genes, reinforcing the biological
+relevance of our predictions.
+3.5.3. Pathway Reasoning and Biological Validation
+By analyzing inference pathways that connect candidate genes to
+known disease ones, we aim to infer their functional relationships
+to discover the causative mechanism. For example, analyzing
+pathways linking disease CMM1 to known melanoma-associated
+genes CDKN2D and CDK4 (Fig. 4 (C)), with edge thickness
+representing attention weights, revealed a key pathway (CMM1
+→MC1R →Mole →CDK4/CDKN2D) offering novel insights
+into melanoma pathogenesis.
+To further understand the mechanisms our model hold, we
+examined the inferred CMM1 →MC1R →Mole pathway,
+strongly backed by existing biological evidence. Research by (Su
+et al., 2023) shows a progressive increase in MC1R expression
+throughout
+melanoma
+development,
+from
+benign
+moles
+to
+metastatic melanoma. Separately, (van der Poel et al., 2020)
+identified the MC1R Val60Leu variant as a significant predictor for
+high mole counts, confirming the MC1R-Mole link. Together, these
+findings support this pathway’s biological plausibility, suggesting
+a coherent mechanism in melanoma pathogenesis.
+Notably,
+an
+alternative
+pathway,
+CMM1
+→
+MC1R
+→
+Freckle,
+also
+receives
+high
+attention
+weights.
+This
+aligns
+with (Bastiaens et al., 2001), who linked MC1R variants to freckle
+formation, reinforcing its connection to CMM1. As illustrated
+in Fig. 4(C), other MC1R-associated conditions,
+many with
+dermatological manifestations,
+show varying correlations with
+melanoma. These identified pathways deepen our understanding
+of disease mechanisms and highlight potential research directions.
+4. Conclusion
+In this work, we introduce BioGraphFusion, a novel framework
+synergistically integrating semantic understanding with structural
+learning
+for
+biomedical
+KGC
+and
+KGR.
+BioGraphFusion
+enhances
+the
+dynamic
+interplay
+between
+these
+paradigms
+by
+using
+CP decomposition
+to
+establish a
+global
+semantic
+context.
+Building
+upon
+this,
+an
+LSTM-driven
+mechanism
+guides structural learning by dynamically refining relational
+information and updating semantic understanding during graph
+propagation. This enables learning context-dependent relation
+semantics and capture long-range dependencies, moving beyond
+static interpretations. Complemented by query-guided subgraph
+construction and a hybrid scoring mechanism, BioGraphFusion
+fosters a deep,
+adaptive refinement cycle between structural
+learning
+and
+semantic
+comprehension.
+Experimental
+results
+show BioGraphFusion consistently outperforms traditional KE
+models, GNN-based approaches, and ensemble methods across
+biomedical benchmarks. Its ability to generate comprehensive
+features through an effective synergy of semantic insights and
+structural learning establishes it as a powerful tool.
+Finally,
+as demonstrated in the CMM1 case study,
+its capacity to
+uncover biologically meaningful pathways highlights its potential
+for advancing biomedical research.
+9
+Funding
+This work was supported in part by the Key Program of
+Natural Science Foundation of Zhejiang Province under Grant
+LZ24F030012, and the National Natural Science Foundation of
+China under Grant 62276232.
+References
+M. Bastiaens et al. The melanocortin-1-receptor gene is the major
+freckle gene.
+Human Molecular Genetics, 10(16):1701–1708,
+2001.
+O. Bodenreider.
+The unified medical language system (umls):
+integrating biomedical terminology.
+Nucleic Acids Research,
+32:D267–D270, 2004.
+Z. Chen et al.
+Knowledge graph completion: A review.
+IEEE
+Access, 8:192435–192456, 2020.
+A. G´ezsi and P. Antal. Gnn4dm: a graph neural network-based
+method to identify overlapping functional disease modules.
+Bioinformatics, 40(10):btae573, 2024.
+E. Jang, S. Gu, and B. Poole. Categorical reparameterization with
+gumbel-softmax. stat, 1050:5, 2017.
+T. G. Kolda and B. W. Bader.
+Tensor decompositions and
+applications. SIAM review, 51(3):455–500, 2009.
+M. Kuhn et al.
+The sider database of drugs and side effects.
+Nucleic acids research, 44(D1):D1075–D1079, 2016.
+T. Lacroix et al. Canonical tensor decomposition for knowledge
+base completion. In J. Dy and A. Krause, editors, Proceedings
+of the 35th International Conference on Machine Learning,
+volume 80 of Proceedings of Machine Learning Research, pages
+2863–2872. PMLR, 2018.
+K. Liang et al. A survey of knowledge graph reasoning on graph
+types: Static, dynamic, and multi-modal. IEEE Transactions on
+Pattern Analysis and Machine Intelligence, pages 1–20, 2024.
+W. Liu,
+X. Cheng,
+S. Xie,
+Y. Yu,
+et al.
+Learning high-
+order structural and attribute information by knowledge graph
+attention networks for enhancing knowledge graph embedding.
+Knowledge-Based Systems, 250:109002, 2022.
+C.
+Maddison,
+A.
+Mnih,
+and
+Y.
+Teh.
+The
+concrete
+distribution:
+A
+continuous
+relaxation
+of
+discrete
+random
+variables.
+In Proceedings of the international conference on
+learning Representations. International Conference on Learning
+Representations, 2017.
+S. Meng et al.
+Structure-information-based reasoning over the
+knowledge graph: A survey of methods and applications. ACM
+Trans. Knowl. Discov. Data, 18(8), 2024.
+M. Nickel et al.
+A review of relational machine learning for
+knowledge graphs. Proceedings of the IEEE, 104(1):11–33, 2015.
+C. Peng, F. Xia, M. Naseriparsa, and F. Osborne.
+Knowledge
+graphs: Opportunities and challenges.
+Artificial Intelligence
+Review, 56(11):13071–13102, 2023.
+J. Pi˜nero et al.
+The disgenet knowledge platform for disease
+genomics:
+2019 update.
+Nucleic acids research,
+48(D1):
+D845–D855, 2020.
+G. Qiao et al. Causal enhanced drug-target interaction prediction
+based on graph generation and multi-source information fusion.
+Bioinformatics, page btae570, 2024.
+M. Qu and J. Tang.
+Probabilistic logic neural networks for
+reasoning. Advances in neural information processing systems,
+32, 2019.
+J. Shen, C. Wang, L. Gong, and D. Song. Joint language semantic
+and structure embedding for knowledge graph completion.
+In
+Proceedings
+of
+the
+29th
+International
+Conference
+on
+Computational Linguistics, pages 1965–1978, 2022.
+D. Su et al. Melanocortin 1 receptor (mc1r) expression as a marker
+of progression in melanoma. Research Square, pages rs–3, 2023.
+Z. Sun et al. Rotate: Knowledge graph embedding by relational
+rotation in complex space. ICLR, 2019.
+D. Szklarczyk et al.
+Stitch 5:
+augmenting protein–chemical
+interaction networks with tissue and affinity data. Nucleic acids
+research, 44(D1):D380–D384, 2016.
+K. Tang et al.
+Fusing structural information with knowledge
+enhanced text representation for knowledge graph completion.
+Data Mining and Knowledge Discovery, 38(3):1316–1333, 2024.
+T. Trouillon, J. Welbl, S. Riedel, ´E. Gaussier, and G. Bouchard.
+Complex embeddings for simple link prediction.
+pages 2071–
+2080, 2016.
+L. A. van der Poel et al.
+The role of mc1r gene variants and
+phenotypical features in predicting high nevus count. Melanoma
+Research, 30(5):511–514, 2020.
+S. Vashishth, S. Sanyal, V. Nitin, and P. Talukdar. Composition-
+based multi-relational graph convolutional networks.
+arXiv
+preprint arXiv:1911.03082, 2019.
+J. Vilela et al.
+Biomedical knowledge graph embeddings for
+personalized medicine:
+Predicting disease-gene associations.
+Expert Systems, 40(5):e13181, 2023.
+B. Wang, T. Shen, G. Long, T. Zhou, Y. Wang, and Y. Chang.
+Structure-augmented text representation learning for efficient
+knowledge graph completion.
+In Proceedings of the Web
+Conference 2021, pages 1737–1748, 2021.
+X. Wang et al. Kdgene: knowledge graph completion for disease
+gene
+prediction
+using
+interactional
+tensor
+decomposition.
+Briefings in Bioinformatics, 25(3):bbae161, 2024a.
+Y.
+Wang
+et
+al.
+Accurate
+and
+interpretable
+drug-drug
+interaction prediction enabled by knowledge subgraph learning.
+Communications Medicine, 4(1):59, 2024b.
+X. Xu, W. Feng, Y. Jiang, X. Xie, Z. Sun, and Z.-H. Deng.
+Dynamically pruned message passing networks for large-scale
+knowledge graph reasoning. arXiv preprint arXiv:1909.11334,
+2019.
+B. Yang, W.-t. Yih, X. He, J. Gao, and L. Deng.
+Embedding
+entities and relations for learning and inference in knowledge
+bases. arXiv preprint arXiv:1412.6575, 2014.
+L. Yao, C. Mao, and Y. Luo. Kg-bert: Bert for knowledge graph
+completion. arXiv preprint arXiv:1909.03193, 2019.
+D. Yu et al.
+Knowledge embedding based graph convolutional
+network. In Proceedings of the web conference 2021, pages 1619–
+1628, 2021.
+Y. Zhang and Q. Yao. Knowledge graph reasoning with relational
+digraph. In Proceedings of the ACM Web Conference 2022, page
+912–924. Association for Computing Machinery, 2022.
+Y. Zhang et al.
+Adaprop:
+Learning adaptive propagation
+for graph neural network based knowledge graph reasoning.
+In Proceedings of the 29th ACM SIGKDD Conference on
+Knowledge Discovery and Data Mining, pages 3446–3457, 2023.
+10
+Lin et al.
+Supplementary Materials
+Overall of the BioGraphFusion
+BioGraphFusion is a novel framework meticulously engineered to transcend the limitations of prior methods by enabling a truly synergistic
+integration of semantic understanding and structural learning within biomedical knowledge graphs (KGs). Its architecture, illustrated in
+Fig. 5, is designed to foster deep interaction mechanisms, ensure dynamic structural learning under global semantic guidance, and achieve
+adaptive refinement through the coupled interplay of its components, thereby fostering a profound and dynamic coupling between these
+two paradigms.
+The process commences with the construction of a biomedical KG from factual triples relevant to the specific task. For instance,
+Disease-Gene Prediction tasks might utilize graphs built from Drug-Disease and Protein-Chemical relationships, while Medical Ontology
+Reasoning would leverage diverse medical relationships to ensure domain-specific fidelity.
+At the heart of BioGraphFusion’s strategy to overcome the lack of overarching semantic direction in many previous models is its
+Global Biological Tensor Encoding module. This component employs Canonical Polyadic (CP) decomposition to generate initial, rich
+embedding matrices for head entities, relations, and tail entities. Crucially, these embeddings establish a foundational global semantic
+context, capturing latent biological associations and providing the essential top-down guidance for the subsequent, more nuanced and
+dynamic structural exploration that follows.
+Node
+Relation
+A. Knowledge Graph Construction
+Fact Triples 
+Query Triples 
+Chemical
+(
+,
+, )
+n
+n
+n
+h r t
+Drug
+Disease
+Protein
+Gene
+Medical Entity
+E. Prediction Example
+C0006118
+Brain Neoplasms
+SMO
+High
+|
+Score
+Ranking
+|
+low
+DLL1
+CCND1
+IFNG
+B1. Global Tensor Decomposition
+…
+…
+B2. Query Initialization
+B. Query-specific Processing
+D. Final Subgraph
+C. Subgraph Construction and Propagation
+C. Query-Guided Subgraph Construction and Propagation
+LSTM
+LSTM
+C1. Relation Refinement with Contextual Guidance 
+C2. Query-Attention Propagation
+Message Aggregation
+FC Layer 
+Tanh
+FC Layer 2
+ReLU
+Sigmoid
+FC Layer 1
+Global Guidance
+C3. Biological Relevance Filtering
+Fig. 5: Overview of the BioGraphFusion framework. (A) Knowledge Graph Construction: Integrating biomedical datasets to form a unified
+knowledge graph for downstream tasks. (B) Query-Specific Processing: A two-step process involving (B1) Global Tensor Decomposition
+that captures latent biological associations, and (B2) Query Initialization that guides the search process. (C) Subgraph Construction and
+Propagation, including (C1) Relation Refinement via LSTM, (C2) Query-Attention Propagation with context-based attention weights,
+and (C3) Biological Relevance Filtering to select the most pertinent entities. (D) Final Subgraph. (E) Scoring Integration that balances
+structural and semantic information and Prediction Example that selects the most promising predictions, with a focus on query disease
+Brain Neoplasms.
+Building upon this global semantic context, the Query-Guided Subgraph Construction and Propagation mechanism is introduced,
+playing a pivotal role in realizing BioGraphFusion’s dynamic and adaptive capabilities. This module first iteratively constructs a query-
+relevant subgraph by selectively expanding along paths deemed semantically meaningful, guided by the global embeddings and the
+evolving query context. A core innovation within this propagation process is the LSTM-driven Contextual Relation Refinement. This
+powerful mechanism dynamically refines relation embeddings during multi-layer propagation within the focused subgraph. Such dynamic
+refinement allows these embeddings to adapt to evolving semantic contexts and capture long-range dependencies—a clear departure from
+static representations. Critically, this LSTM-driven process ensures that structural learning is continuously informed by and interacts
+with semantic insights, fostering a profound and dynamic coupling between these two paradigms. Complementing this deep, contextual
+refinement of relations, the query-guided nature of the subgraph construction further focuses structural exploration and message passing
+on the most biologically pertinent regions, enabling highly adaptive refinement and targeted learning.
+11
+Finally, to ensure a holistic and robust prediction, A hybrid scoring mechanism synthesizes the knowledge gained. This mechanism is
+aimed at achieving an optimal balance between the foundational global semantic knowledge (captured by the initial tensor embeddings)
+and the contextualized structural representations derived from the dynamic, semantically-guided graph propagation. This step ensures
+that both the broad, overarching associations and the fine-grained, dynamically uncovered structural patterns contribute to the final
+output.
+In essence, by systematically establishing global semantic guidance, enabling dynamic and context-aware structural learning that is
+continuously informed by semantic insights, and ensuring their deep, adaptive coupling, BioGraphFusion’s architecture is designed to
+deliver more accurate predictions and profound biological insights, moving beyond the capabilities of models with less integrated semantic
+and structural processing.
+(1) SM1: Experimental Tasks and Datasets
+All experiments were conducted using the datasets presented in Table 3. The table details three main tasks: prediction of disease genes,
+protein-chemical interactions, and medical ontology reasoning, each accompanied by specific background knowledge. Together, these
+datasets offer a comprehensive and robust foundation for evaluating our methods across multiple biomedical domains.
+Table 3. Datasets and Task Overview.
+Tasks
+Background Knowledge
+Main Datasets
+Sources
+Targets
+Disease-Gene
+Drug-Disease Relationships
+Prediction
+SIDER (14,631)
+DisGeNet (130,820)
+Protein-Chemical Relationships
+Gene
+STITCH (277,745)
+Protein-Chemical
+Drug-Disease Relationships
+Interaction
+SIDER (14,631)
+STITCH (23,074)
+Disease-Gene Relationships
+Chemical
+DisGeNet (130,820)
+Medical Ontology
+Various Medical Relationships
+UMLS(2,523)
+Reasoning
+UMLS(4,006)
+Multi-domain Entities
+Disease-Gene Prediction task: This task aims to identify gene entities associated with a given disease; for example, if the input
+is ”Alzheimer’s Disease”, the model would predict associated genes such as ”APOE”. We utilize 130,820 disease-gene associations from
+the DisGeNET database, following the data foundation of the KDGene study. To provide broader contextual information, this primary
+dataset is enriched by incorporating drug–disease relationships from SIDER (Kuhn et al., 2016) and protein–chemical interactions from
+STITCH (Szklarczyk et al., 2016). While these sources offer a substantial number of potential contextual interactions (14,631 and
+277,745 respectively), to mitigate potential data imbalance from such extensive background knowledge and maintain a focused set of
+supplementary data, the number of supplementary samples utilized from these enrichment sources for the Disease-Gene Prediction task
+was capped at 15,000. Our primary experiments, detailed in this manuscript, were based on one specific fold selected from KDGene’s
+10-fold cross-validation setup (which uses a 90% training/10% testing split per fold). Within this chosen fold, KDGene’s original 10%
+segment served as our test set. The remaining 90% (KDGene’s training portion) was partitioned by us into a 70% training set and a 20%
+validation set for BioGraphFusion, relative to the total data in that fold. This established an effective 70%/20%/10% train/validation/test
+configuration, where the validation set was used for hyperparameter optimization.
+To provide a more comprehensive assessment of BioGraphFusion’s generalization performance and robustness, and for direct
+comparison under KDGene’s full benchmark protocol, we also conducted a complete 10-fold cross-validation. In this broader evaluation,
+for each of the 10 original KDGene folds, BioGraphFusion was trained directly on the entire 90% training data portion defined by
+KDGene for that fold. For these 10-fold CV runs, we utilized the set of fixed hyperparameters (such as learning rate and embedding
+dimensions) that were determined as optimal during our initial single-fold experiments, and each fold was trained for a number of epochs
+consistent with those initial experiments. Subsequently, the model was evaluated on the corresponding 10% original KDGene test set.
+These comprehensive 10-fold cross-validation results, alongside those for selected key baseline models under the same rigorous regimen,
+are detailed in the SM6: 10-fold Cross-Validation Results for Disease-Gene Prediction Task on DisGeNET.
+Protein–Chemical Interaction task: This task aims to predict chemical entities that interact with a given protein. We utilize
+23,074 STITCH interaction triples filtered for the top 100 most frequent proteins (Wang et al., 2024b), following the same 7:2:1 train-
+validation-test split. The model predicts chemical entities interacting with a given protein. For example, when presented with DRD2
+(Dopamine Receptor D2), a key prediction would be acetylcholine (CIDm00000187). This specific interaction, annotated in the STITCH
+dataset as a protein-chemical relation, is biologically meaningful and reflects DRD2’s established role in modulating cholinergic signaling.
+To address class imbalance from extensive negative sampling, supplementary samples are capped at 10,000 (disease-gene) and 10,000
+(disease-drug).
+12
+Lin et al.
+Medical Ontology Reasoning task: This task is a form of Knowledge Graph Reasoning (KGR) and utilizes the comprehensive
+UMLS Terminology (Bodenreider, 2004). Following prior work (Zhang et al., 2023; Zhang and Yao, 2022), this terminology is pre-
+split into background, training, validation, and test sets. Within this KGR framework, the task is specifically formulated as a link
+prediction problem: given a head concept and a specific UMLS relation type, the model must predict the correct tail concept to
+complete the triplet. For instance, given the head UMLS concept Acquired Abnormality and the relation Result of, the model would
+aim to predict Phenomenon or Process as the tail; this specific prediction is ontologically justified because acquired medical conditions
+inherently result from various underlying phenomena or processes, thus forming the valid triplet (Acquired Abnormality, Result of,
+Phenomenon or Process). By concealing the tail entities of known relations during training and tasking the model with their prediction,
+reasoning is effectively transformed into a link prediction problem. This approach facilitates not only the completion of missing hierarchical
+links (e.g., predicting broader or narrower concepts using relations like “Isa” or “Part of”) and the discovery of implicit associations
+(e.g., through relations such as “Associated with” or “Co-occurs with”), but also the verification of consistency within medical domain
+knowledge.
+(2) SM2: Gradient-Preserving Hard Selection Mechanism
+The Gradient-Preserving Hard Selection Mechanism in BioGraphFusion selects a fixed-size set of K most relevant entities (Top-K nodes)
+from a candidate set C(ℓ) at each propagation layer ℓ. This focuses computational resources and directs information flow. A key challenge
+is performing this discrete Top-K selection differentiably for end-to-end training via gradient-based optimization.
+The mechanism first computes continuous, soft relevance scores st for each candidate node t ∈C(ℓ). During training, to achieve
+differentiable Top-K selection, BioGraphFusion employs the Gumbel-Softmax technique (Jang et al., 2017; Maddison et al., 2017). This
+allows the derivation of a ”hard” binary selection mask shard
+t
+(values near 0 or 1) from the soft scores st, indicating the selected Top-K
+nodes V(ℓ):
+V(ℓ) = TopK st | t ∈C(ℓ)
+.
+(13)
+The Gumbel-Softmax ensures this process is amenable to gradient-based learning.
+To preserve gradients through this discrete selection when updating node representations h(ℓ)
+t , the following strategy is used:
+h(ℓ)
+t
+←h(ℓ)
+t
+·  shard
+t
+−detach(st) + st
+
+In the Forward Pass, this expression effectively multiplies h(ℓ)
+t
+by the hard selection mask shard
+t
+. In the Backward Pass, the gradient
+with respect to the parameters generating st is equivalent to the gradient of st itself. This ”straight-through estimator” variant allows
+discrete forward selection while using continuous soft scores for gradient estimation, preserving crucial gradient information.
+During inference, differentiability is not needed, so a standard deterministic Top-K selection based on the highest soft scores st is
+used.
+This mechanism is vital as it enables focused, discrete node selection while maintaining end-to-end differentiability for effective
+training. It combines interpretable hard selections with stable gradient-based learning, enhancing BioGraphFusion’s ability to capture
+salient information for accurate knowledge graph completion and reasoning.
+(3) SM3: Experimental Configuration and Hyperparameter Optimization
+We implemented all experiments in Python using PyTorch v1.12.1 and PyTorch Geometric v2.0.9 on a single NVIDIA RTX 3090 GPU.
+Training time and GPU memory usage vary with the dataset and batch size. Hyperparameter tuning was performed over the following
+ranges (see Table 4): learning rate from {10−4, 5×10−4, 10−3, 5×10−3, 10−2}; batch size from {4, 8, 16, 32}; embedding dimension D from
+{32, 48, 64, 80, 96}; selected entities count K from {100, 300, 500, 800, 1000}; fusion weight λ from {0.3, 0.4, 0.5, 0.6, 0.7, 0.8}; regularization
+coefficient γ from {0, 0.001, 0.01, 0.1}; and propagation steps ℓfrom {4, 5, 6, 7, 8}. Other hyperparameters were set following the AdaProp
+configuration (Zhang et al., 2023). The optimal settings were selected based on the MRR metric evaluated on the validation set Fval,
+with training capped at 100 epochs.
+Table 4. Hyperparameter Settings for BioGraphFusion Experiments
+Hyperparameters
+Values
+Learning Rate
+{10−4, 5 × 10−4, 10−3, 5 × 10−3, 10−2}
+Batch Size
+{4, 8, 16, 32}
+Embedding Dimension D
+{16, 32, 48, 64, 96}
+Selected Entities Count K
+{100, 300, 500, 800, 1000}
+Fusion Weight λ
+{0.3, 0.4, 0.5, 0.6, 0.7, 0.8}
+Regularization Coefficient γ
+{0, 0.001, 0.01, 0.1}
+Propagation Steps ℓ
+{4, 5, 6, 7, 8}
+The code implementation reflecting these optimal hyperparameter settings is publicly available in our open-source repository.
+13
+(4) SM4: Evaluation Metrics
+We evaluate our model’s performance on the biomedical knowledge graph tasks using two standard ranking metrics: Mean Reciprocal
+Rank (MRR) and Hit@k, following established practices (Wang et al., 2024a; Zhang and Yao, 2022; Zhang et al., 2023). These metrics are
+chosen to quantify both the overall ranking quality and the model’s precision in retrieving the correct entity within the top-k predictions.
+The Mean Reciprocal Rank (MRR) is defined as:
+MRR =
+1
+|Q|
+X
+(qe,qr,qa)∈Q
+1
+rank(qe, qr, qa)
+where Q denotes the set of test queries in the form (qe, qr, ?) and rank(qe, qr, qa) indicates the position of the correct tail entity qa for
+the query (qe, qr, ?) in a filtered ranking list. In the filtered setting, all known true triples (except for the target triple) are removed from
+the candidate list to ensure that only plausible negatives are considered. MRR provides an average measure of ranking quality across all
+test queries, with higher values indicating better overall performance.
+The Hit@k metric measures the proportion of queries for which the correct entity appears within the top k predictions. It is computed
+as:
+Hit@k =
+1
+|Q|
+X
+(qe,qr,qa)∈Q
+I (rank(qe, qr, qa) ≤k)
+where I(·) is the indicator function that returns 1 if the condition is true and 0 otherwise. This metric reflects the model’s precision in
+retrieving the correct answer among the top predictions.
+(5) SM5: Baseline Models and Implementation Protocols
+Baseline Model Categories
+To evaluate the performance of our framework in biological knowledge graph analysis, we benchmark against state-of-the-art methods
+from three major categories: Knowledge Embedding (KE) models, Graph Neural Network (GNN-based) approaches, and Ensemble
+methods:
+For KE, we benchmark against: RotatE (Sun et al., 2019) modeling relations as complex space rotations; ComplEx (Trouillon
+et al., 2016) capturing asymmetric interactions via complex-valued embeddings; DistMult (Yang et al., 2014) using a simplified bilinear
+scoring function; CP-N3 (Lacroix et al., 2018) which enhances the Canonical Polyadic (CP) decomposition with N3 regularization; and
+KDGene (Wang et al., 2024a), a model specifically designed for disease-gene prediction using interactional tensor decomposition.
+For GNNs,
+we compare with:
+pLogicNet (Qu and Tang, 2019) which integrates probabilistic logic with neural networks;
+CompGCN (Vashishth et al., 2019) that incorporates relation composition into Graph Convolutional Networks; DPMPN (Xu et al.,
+2019) employing a dynamic programming message passing network; AdaProp (Zhang et al., 2023) which learns adaptive propagation
+patterns for multi-hop reasoning; and RED-GNN (Zhang and Yao, 2022), a relational digraph-based GNN for knowledge graph reasoning.
+For Ensemble methods, we include: KG-BERT (Yao et al., 2019), treating knowledge graph triples as textual sequences and fine-
+tuning pre-trained language models like BERT for triple plausibility scores; StAR (Wang et al., 2021), a hybrid model augmenting textual
+encoding with graph embedding techniques, utilizes a Siamese-style encoder and learns representations by employing both a deterministic
+classifier for semantic plausibility and a spatial distance measurement for structural relationships; and LASS (Shen et al., 2022), jointly
+embedding triplet natural language semantics and structure via pre-trained language model fine-tuning with a probabilistic loss.
+Baseline Implementation and Evaluation Protocols
+We utilize publicly available code from the original authors whenever possible, with download links provided in Table 5 to facilitate
+access to original implementations for further details and reproducibility.
+To ensure a robust and fair comparison, we adopted a systematic approach to hyperparameter selection for all methods. For each
+baseline model, we began with the officially recommended or widely reported hyperparameter settings. We then carefully adjusted
+key parameters (such as batch size, learning rate, and training epochs) based on the characteristics of our biological knowledge graph
+datasets and preliminary results on a dedicated validation set, aiming to optimize each model’s performance. Importantly, the final
+hyperparameters for all models were selected according to their performance (e.g., MRR) on the same validation set. This consistent
+validation protocol ensures that all models were evaluated under comparable conditions, enabling a fair and meaningful performance
+comparison.
+(6) SM6: 10-fold Cross-Validation Results for Disease-Gene Prediction Task on DisGeNET
+To provide a fair and comprehensive evaluation of our BioGraphFusion model on the disease-gene prediction task, we employed a more
+rigorous 10-fold cross-validation experimental design. Since conducting complete 10-fold cross-validation for all baseline models would
+require substantial computational resources and time, we selected representative models that performed most competitively in each
+category from Table 1 in the main manuscript (KDGene representing the KE category, RED-GNN representing the GNN category, and
+StAR representing the ensemble learning category). We then ran experiments based on their publicly available code under the unified
+10-fold cross-validation setting.
+14
+Lin et al.
+Table 5. Baselines with URLs to download the codes provided by the respective authors.
+Baselines
+URLs
+RotatE (Sun et al., 2019)
+https://github.com/DeepGraphLearning/KnowledgeGraphEmbedding
+ComplEx (Trouillon et al., 2016)
+https://github.com/ttrouill/complex
+DisMult (Yang et al., 2014)
+https://github.com/mana-ysh/knowledge-graph-embeddings
+CP-N3 (Lacroix et al., 2018)
+https://github.com/facebookresearch/kbc
+KDGene (Wang et al., 2024a)
+https://github.com/sienna-wxy/KDGene
+pLogicNet (Qu and Tang, 2019)
+https://github.com/DeepGraphLearning/pLogicNet
+CompGCN (Vashishth et al., 2019)
+https://github.com/malllabiisc/CompGCN
+DPMPN (Xu et al., 2019)
+https://github.com/anonymousauthor123/DPMPN
+AdaProp (Zhang et al., 2023)
+https://github.com/LARS-research/AdaProp
+RED-GNN (Zhang and Yao, 2022)
+https://github.com/LARS-research/RED-GNN
+KG-BERT (Yao et al., 2019)
+https://github.com/yao8839836/kg-bert
+LASS (Shen et al., 2022)
+https://github.com/jhshen95/LASS
+StAR (Wang et al., 2021)
+https://github.com/wangbo9719/StAR_KGC
+Table 6 presents the detailed performance of each model under 10-fold cross-validation, with results reported as “Mean ± Standard
+Deviation” to provide a more comprehensive reflection of model performance and stability. As demonstrated in the table, BioGraphFusion
+consistently outperforms other baseline methods across all three key metrics: MRR (0.436±0.014), Hit@1 (0.382±0.007), and Hit@10
+(0.537±0.020). The reasonable distribution of standard deviation values further reflects the model’s stability and robustness across
+different data splits.
+Table 6. Cross-validation results for Disease-Gene Prediction on the DisGeNET dataset. All models were evaluated using the original 10-fold splits defined
+by KDGene (Wang et al., 2024a). Results are reported as mean ± standard deviation across the 10 folds.
+Type
+Model
+MRR
+Hit@1
+Hit@10
+KE
+KDGene (Wang et al., 2024a)
+0.378± 0.016
+0.315± 0.009
+0.518± 0.017
+GNN
+RED-GNN (Zhang and Yao, 2022)
+0.394± 0.012
+0.338± 0.008
+0.472± 0.018
+Ensemble
+StAR (Wang et al., 2021)
+0.241± 0.015
+0.185± 0.010
+0.354± 0.021
+Proposed
+BioGraphFusion (ours)
+0.436± 0.014
+0.382± 0.007
+0.537± 0.020
+Regarding standard deviation, we observe distinct patterns across different methods: KDGene shows a relatively higher standard
+deviation in MRR (0.016), which may reflect the sensitivity of knowledge embedding methods when handling different data splits; RED-
+GNN demonstrates a moderate level of standard deviation (e.g., 0.012 for MRR), indicating that graph structure-based methods maintain
+relative stability in local structure modeling; while StAR’s higher standard deviation in Hit@10 (0.021) might stem from its ensemble
+approach responding differently to variations in data distribution. In comparison, BioGraphFusion maintains reasonable and relatively
+low standard deviations across most metrics (0.014 for MRR, 0.007 for Hit@1), particularly demonstrating excellent performance on the
+strict Hit@1 metric, which fully proves that our approach not only delivers superior performance but also exhibits good stability, capable
+of providing reliable predictions under various data conditions.
+(7) SM7: Computational Efficiency Analysis and Predictive Accuracy on UMLS Dataset
+To provide a comprehensive assessment of the trade-off between computational efficiency and predictive accuracy, we present a
+comparative analysis of BioGraphFusion’s inference performance relative to representative baseline models on the UMLS dataset. Inference
+times were averaged over five independent runs, all conducted under identical hardware and software conditions (single NVIDIA RTX
+3090 GPU, PyTorch 1.12.1, Python 3.10.14).
+For this comparative analysis, we selected high-performing and representative models from three main categories: Knowledge
+Embedding (KE) models (specifically RotatE and ComplEx), Graph Neural Networks (GNNs) (AdaProp and RED-GNN), and LM-
+based Ensemble approaches (LASS and StAR). Figure 6 provides a visual summary, plotting the Mean Reciprocal Rank (MRR) on the
+UMLS test set against the corresponding inference time (in seconds) for BioGraphFusion and these selected baselines.
+As depicted in Figure 6, on the UMLS dataset, BioGraphFusion achieves a high MRR of 0.974 with an inference time of approximately
+19.84 seconds. This positions BioGraphFusion effectively within the performance-efficiency landscape. Its inference efficiency is notably
+strong, particularly when compared to the other GNNs evaluated; for instance, it is faster than both AdaProp (inference time: 24.45s,
+MRR: 0.842) and RED-GNN (inference time: 29.54s, MRR: 0.782), while also achieving a higher MRR. Relative to traditional KE
+methods, such as RotatE (inference time: 9.56s, MRR: 0.778) and ComplEx (inference time: 5.57s, MRR: 0.594), which are generally
+faster due to their simpler architectures, BioGraphFusion demonstrates a substantial improvement in MRR for a moderate increase in
+inference time. Furthermore, BioGraphFusion is significantly more efficient in its inference phase than the typically more computationally
+demanding LM-based ensemble systems such as LASS (inference time: 833.89s, MRR: 0.908) and StAR (inference time: 522.0s, MRR:
+15
+101
+102
+103
+Inference Time (sec)
+0.55
+0.60
+0.65
+0.70
+0.75
+0.80
+0.85
+0.90
+0.95
+1.00
+MRR on UMLS test
+RotatE
+CompIEx
+AdaProp
+RED-GNN
+LASS
+StAR
+ours
+Ours
+Knowledge Embedding
+Graph Neural Network
+Ensemble Model
+Fig. 6: Comparative analysis of computational efficiency and predictive accuracy on the UMLS dataset (inference time measured on
+NVIDIA RTX 3090 GPU). The scatter plot displays the Mean Reciprocal Rank (MRR) versus inference time (seconds) for BioGraphFusion
+(ours) and representative baseline models: Knowledge Embedding (RotatE, ComplEx), Graph Neural Network (AdaProp, RED-GNN),
+and Ensemble (LASS, StAR). Inference times are averaged over five runs using each model’s optimal hyperparameters. This figure
+illustrates the balance between predictive performance and computational efficiency across different modeling approaches.
+0.834). BioGraphFusion not only boasts a much shorter inference time than these LM-based models but also achieves a higher MRR
+than both.
+BioGraphFusion’s favorable balance between high performance and efficient inference appears to stem from its sophisticated design
+that addresses key limitations of other paradigms. The framework’s use of global semantic guidance, derived from tensor decomposition,
+likely enables more direct and interpretable pathfinding during reasoning. This global guidance can inform BioGraphFusion’s query-guided
+subgraph construction, allowing it to selectively build more focused and semantically relevant subgraphs. This potentially streamlines
+the process compared to GNNs that might rely on more computationally intensive or exploratory subgraph generation strategies when
+lacking such strong initial global priors. Moreover, unlike some LM-based approaches that may not fully or efficiently integrate dynamic
+semantic insights with evolving structural graph updates during multi-hop reasoning, or traditional KE techniques that might oversimplify
+relational patterns and overlook critical graph structure, BioGraphFusion is designed to foster a deeper, adaptive interaction between
+semantic context and structural information. While some simpler KE methods offer faster raw inference speeds, BioGraphFusion strikes
+a compelling balance: achieving efficient processing within an expressive framework that supports complex, stable, and ultimately
+more effective knowledge graph reasoning by robustly modeling and leveraging the crucial interplay between semantics and structure.
+This demonstrates that BioGraphFusion can attain state-of-the-art predictive accuracy without incurring the prohibitive computational
+overheads observed in some other advanced, particularly LM-based, models.
+(8) SM8: Regularization Studies and LSTM Validation
+Validation of LSTM for Contextual Relation Refinement
+To empirically validate our architectural choice of Long Short-Term Memory (LSTM) networks for the Contextual Relation Refinement
+Module, we conducted comprehensive comparative experiments where this critical component was systematically replaced with alternative
+neural architectures. As detailed in Table 7, the LSTM-based configuration of BioGraphFusion consistently demonstrated superior or
+highly competitive performance across all three evaluated datasets. For instance, on the Disease-Gene Prediction task, it achieved notable
+metrics (MRR 0.429, Hit@1 0.377, Hit@10 0.529), outperforming RNN and GRU variants. This trend of superior contextual modeling
+was similarly observed in the other biomedical tasks, reinforcing its general applicability.
+This performance advantage directly stems from LSTM’s architectural design, which proves exceptionally well-suited for biomedical
+knowledge graphs where relation semantics are highly entity-dependent. While RNN and GRU demonstrated diminished efficacy due
+to their simpler memory mechanisms, LSTM’s sophisticated structure provides multiple critical advantages through its tripartite gating
+system and dedicated memory cell. The forget gate selectively discards irrelevant aspects of prior relation states, the input gate regulates
+incorporation of entity-derived information, and the output gate determines which aspects propagate as the new relation embedding.
+This architecture enables LSTM to effectively preserve long-term dependencies and perform fine-grained contextual adjustments that
+16
+Lin et al.
+RNN and GRU cannot achieve with their simplified structures, particularly in complex biomedical contexts where relation meanings
+shift substantially based on specific entity pairs.
+Even when compared to more complex architectures like Echo State Networks and Temporal Convolutional Networks, the LSTM-based
+configuration demonstrated superior performance. ESNs’ static reservoir design inherently limits adaptive memory control compared to
+LSTM’s flexible gating. Similarly, while TCNs excel at sequence-level pattern processing, they are less aligned with our task’s demand for
+targeted entity-specific relation modulation. The Transformer architecture, while undeniably powerful for capturing global dependencies
+in many sequence processing tasks, showed inferior performance for our particular module focused on iterative, entity-specific refinement
+of individual relation embeddings when compared to our LSTM-based configuration.
+LSTM’s inherent support for stateful updates, where output depends on both previous state and current inputs, perfectly aligns with
+our goal of iteratively refining relation embeddings based on contextual entity information. This allows the model to learn complex,
+adaptive mappings that tailor relation representations to specific entity pairs—essential for modeling the intricate biological processes
+whose interpretation varies significantly with participating molecular entities.
+These empirical findings and theoretical considerations robustly affirm LSTM as the optimal architecture for contextual relation
+refinement in BioGraphFusion, highlighting the importance of aligning neural architecture characteristics with specific task demands in
+complex biomedical domains.
+Table 7. Comparative Performance of BioGraphFusion Variants: Validating LSTM for Contextual Relation Refinement and Assessing the Impact of N3
+Regularization. Best results are shown in bold, and second-best results are underlined.
+BioGraphFusion
+Disease-Gene
+Protein-Chemical
+Medical Ontology
+Model variants
+Prediction
+Interaction
+Reasoning
+MRR
+Hit@1
+Hit@10
+MRR
+Hit@1
+Hit@10
+MRR
+Hit@1
+Hit@10
+w/ RNN
+0.387
+0.332
+0.492
+0.654
+0.603
+0.752
+0.942
+0.924
+0.982
+w/ GRU
+0.386
+0.330
+0.495
+0.659
+0.608
+0.755
+0.951
+0.936
+0.984
+w/ ESN
+0.407
+0.344
+0.521
+0.683
+0.632
+0.778
+0.965
+0.947
+0.990
+w/ TCN
+0.404
+0.353
+0.515
+0.689
+0.639
+0.782
+0.969
+0.952
+0.988
+w/ Transformer
+0.383
+0.321
+0.500
+0.671
+0.621
+0.765
+0.953
+0.934
+0.985
+w/ L1
+0.409
+0.358
+0.518
+0.687
+0.637
+0.780
+0.961
+0.945
+0.987
+w/ L2
+0.412
+0.364
+0.520
+0.694
+0.645
+0.788
+0.967
+0.950
+0.989
+w/o N3
+0.395
+0.338
+0.509
+0.676
+0.626
+0.769
+0.955
+0.937
+0.986
+Ours (w/ LSTM & N3)
+0.429
+0.377
+0.529
+0.702
+0.657
+0.795
+0.974
+0.963
+0.991
+Analysis of N3 Regularization Impact
+This section assesses the role of N3 regularization within the BioGraphFusion framework, with a particular focus on determining whether
+it acts as a confounding factor for the model’s performance improvements. N3 regularization is employed in BioGraphFusion, following
+established approaches such as CP-N3 (Lacroix et al., 2018), to operate on the CP embeddings, specifically eqe, eℓ
+qr, and eqa. The
+technique targets the sum of cubes of embedding magnitudes. This form of regularization is intended to mitigate overfitting and enhance
+the model’s ability to learn from complex biological knowledge graphs. We aim to demonstrate that BioGraphFusion’s core architectural
+innovations provide substantial benefits independently, and that N3 regularization serves as a well-suited, complementary component
+rather than the sole driver of high performance.
+To dissect the precise influence of N3 regularization, we compare our full BioGraphFusion model against several alternative
+configurations, as detailed in Table 7. These include variants of BioGraphFusion that incorporate standard L1 regularization (L1)
+and standard L2 regularization (L2), both applied to the same CP embeddings. Additionally, we evaluate a BioGraphFusion variant from
+which N3 regularization has been entirely removed. This comparative analysis allows for a clear delineation of N3’s contribution relative
+to other regularization methods and its overall necessity.
+This analysis first evaluated if BioGraphFusion’s foundational architecture performs strongly without the specific N3 regularization.
+As shown in Table 7, on the Disease-Gene Prediction task, BioGraphFusion with L2 regularization (MRR 0.412) and L1 regularization
+(MRR 0.409) both surpassed the strongest competing baseline model. Similar strong performance with L1 and L2 regularization, relative
+to baselines, was observed across the other datasets as well. These results highlight that BioGraphFusion’s primary efficacy stems from
+its core architectural innovations: the establishment of a global semantic foundation through Canonical Polyadic (CP) decomposition,
+dynamic structural reasoning actively guided by these initial embeddings, and advanced, context-aware relation refinement using LSTMs.
+This establishes that the model’s competitive edge is rooted in this inherent design, which fosters a synergistic interplay between semantic
+understanding and structural learning, rather than depending solely on N3 regularization, thus confirming its robust foundational design.
+While the core architecture is strong, regularization choice significantly impacts final performance. Our BioGraphFusion model with
+N3 regularization achieved the highest scores, notably outperforming its L2, L1, and non-regularized counterparts. This consistent
+performance hierarchy indicates that although any regularization is beneficial over none, N3 offers a distinct advantage over conventional
+L1 and L2 methods for this model.
+The superior performance of N3 regularization suggests that its specific mechanism, which penalizes the (l3)-norm of embedding
+magnitudes, is particularly well-aligned with the characteristics of the CP embeddings used and the demands of biological knowledge
+17
+graph tasks. This type of regularization may offer a more suitable inductive bias for navigating the complex and often sparse relationships
+prevalent in such data. Consequently, it appears to lead to more effective prevention of overfitting and improved generalization capabilities
+compared to L1 or L2 norms in this specific context.
+In essence, BioGraphFusion’s primary effectiveness is rooted in its strong and innovative core architecture, which delivers competitive
+results independently. The N3 regularization then acts as a significant and synergistic enhancement, further elevating the model’s
+performance to a state-of-the-art level.
+(9) SM9: t-SNE Visualizations and Embedding Analysis with Baseline Models
+To evaluate the semantic quality of embeddings learned by BioGraphFusion relative to other approaches, we conducted a comparative
+t-SNE visualization analysis (Fig. 7). This analysis focuses on protein embeddings from the Protein-Chemical Interaction task, specifically
+visualizing those associated with 10 chemical compounds (PubChem CIDs), each linked to 50–100 interacting proteins. BioGraphFusion’s
+embeddings are compared against those from three representative baselines: RotatE (knowledge graph embedding) (Sun et al., 2019),
+RED-GNN (GNN-based) (Zhang and Yao, 2022), and StAR (ensemble text and structure) (Wang et al., 2021).
+Fig. 7: t-SNE visualization of protein embeddings. Each subfigure shares the same proteins and each color represents proteins interacting
+with the same chemical compound, labeled by PubChem CID.
+Protein embeddings for each method are obtained from their final learned representations. For GNN-based models like RED-GNN and
+our BioGraphFusion, these are typically generated after message propagation phases. For KE models like RotatE, embeddings are the
+direct output of the training process that optimizes a scoring function for triples. For StAR, embeddings are derived from its framework
+that integrates textual encoding with structural information. These embeddings are then reduced to two dimensions for visualization.
+The t-SNE plot corresponding to the BioGraphFusion model (shown in Fig. 7) yields tightly clustered and semantically coherent protein
+embeddings, indicating that the integration of CP decomposition-derived initial embeddings and LSTM-driven relation updates effectively
+shapes the representations to capture fine-grained interaction contexts.
+In contrast, the selected baseline methods, as depicted in their respective t-SNE visualizations (Fig. 7), tend to exhibit more diffuse
+embedding clusters with notable inter-group overlap. RotatE’s visualization shows that while this method is effective at modeling
+relational patterns through rotations in complex space, its representations (learned primarily based on existing triple structures) may not
+always group entities optimally based on the specific, nuanced semantic context of diverse protein-chemical interactions if such distinct
+contexts are not explicitly and sufficiently captured by distinct relational paths. This can potentially lead to less distinct clusters for
+proteins interacting with different chemicals. For RED-GNN, its strength lies in capturing structural information and multi-hop relations
+18
+Lin et al.
+via its relational digraph structure and query-attentive message passing mechanisms. While proficient in reasoning over graph structures,
+its inherent semantic differentiation for entities primarily depends on the learned relation embeddings and topological neighborhood
+information. In our experimental setup, the input features to RED-GNN did not contain rich initial semantic information beyond
+identifiers, and its GNN architecture primarily focused on propagating structural signals. Consequently, this resulted in broader, less
+separated clusters in its t-SNE plot compared to models that more deeply integrate explicit semantic features or leverage descriptive
+inputs.
+StAR’s t-SNE visualization is also considered. This model is designed as a hybrid approach augmenting textual encoding of triples
+with graph embedding techniques, using a Siamese-style textual encoder. Its ability to form distinct semantic clusters is significantly
+influenced by the availability and richness of descriptive text for proteins and chemicals. In our experimental setup for the PCI task, to
+maintain consistency in the input features across all compared methods, detailed textual descriptions for entities were not incorporated
+for any model; entities were primarily represented by their identifiers or brief names. Consequently, StAR’s powerful textual encoding
+capabilities, which rely on such rich descriptions, were not fully leveraged in this setting. The model, therefore, likely relied more heavily
+on its structural learning components or the default textual interpretation of these basic identifiers. This absence of detailed descriptive
+semantic input may have contributed to less defined separations between protein groups in the visualization, as the model might not have
+captured the subtle distinguishing features necessary for tight, well-separated clustering based on their specific chemical interactions.
+(10) SM10: Hyperparameter Sensitivity Analysis on the Disease-Gene Prediction Task
+To examine how key hyperparameters influence the predictive performance of BioGraphFusion, we conducted a sensitivity analysis on
+the disease-gene prediction task. We systematically varied batch size, embedding dimension D, fusion weight λ, and the number of
+propagation steps ℓ, observing their effects on ranking metrics such as MRR, Hit@1, and Hit@10. The analysis helps identify optimal
+parameter settings that maximize model effectiveness while maintaining stability across different configurations. The following sections
+detail the observed trends for each hyperparameter, with results visualized in Fig. 8.
+4
+8
+16
+32
+Batch Size
+0.38
+0.40
+0.42
+0.44
+0.46
+0.48
+0.50
+0.52
+Metric Value
+16
+32
+48
+64
+80
+96
+Embedding Dim D
+0.375
+0.400
+0.425
+0.450
+0.475
+0.500
+0.525
+Metric Value
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+Fusion Weight 
+0.350
+0.375
+0.400
+0.425
+0.450
+0.475
+0.500
+0.525
+Metric Value
+4
+5
+6
+7
+8
+Propagation Steps 
+0.375
+0.400
+0.425
+0.450
+0.475
+0.500
+0.525
+Metric Value
+MRR
+Hit@1
+Hit@10
+Fig. 8: BioGraphFusion underwent a hyperparameter sensitivity analysis to evaluate the influence of batch size, embedding dimension
+(D), fusion weight λ, and propagation steps (ℓ) on the resulting performance, as measured by MRR, Hit@1, and Hit@10.
+Impact of Batch Size
+The selection of an appropriate batch size is crucial for balancing model performance and training efficiency. Our search space for
+this hyperparameter was guided by the common practice of using power-of-2 batch sizes for computational efficiency and the practical
+constraints of GPU memory. Preliminary tests indicated that batch sizes exceeding 50 were unfeasible for our single-GPU (NVIDIA RTX
+3090) training setup. Consequently, we established the experimental batch size range for performance evaluation as [4, 8, 16, 32].
+We evaluated performance metrics (MRR, Hit@1, and Hit@10) across this range. Optimal performance was achieved with a batch
+size of 16, while a batch size of 8 also yielded strong and comparable results. A decline in performance was observed for the smallest
+batch size tested (4) and for the largest (32), relative to these optima. The reduced performance at a batch size of 4 is consistent with
+19
+the known challenge of less stable gradient estimations, which can hinder effective convergence. These findings indicate that batch sizes
+of 8 and 16 offer the most favorable performance characteristics for this task.
+Notably, smaller batch sizes inherently increase training duration. This increase is attributable not only to the higher frequency
+of parameter updates but also to the potential underutilization of parallel processing capabilities in hardware accelerators. Therefore,
+while our results provide guidance on optimal performance, we recommend that users adjust the batch size according to their available
+computational resources and desired training speed. This flexible approach ensures that model training remains practical and can be
+tailored to individual operational contexts, balancing performance with computational feasibility.
+Impact of Embedding Dimension D
+We experimented with embedding dimensions ranging from 16 to 96. Performance shows a trend of initial improvement followed by a
+plateau or gradual decline, with the best results observed at dimension D = 32. This phenomenon indicates that a moderate embedding
+dimension is sufficient to capture the necessary semantic details without incurring over-parameterization or redundancy.
+Our findings emphasize the critical role of carefully tuning the embedding dimensions. Not only do they balance model expressiveness
+and robustness, but they also play a fundamental part in capturing the inherent semantic structure of the biomedical knowledge graph.
+Given that the CP decomposition is specifically designed to unveil latent semantic patterns in multi-relational data, the chosen embedding
+dimension directly affects how effectively these semantic details are preserved in the learned representations. Therefore, determining an
+optimal embedding size is essential to fully realizing the potential of our model, ensuring that the resulting embeddings are compact
+enough to faithfully reflect the global semantic structure hidden in the data.
+Impact of Fusion Weight λ
+The fusion weight λ is a crucial hyperparameter in BioGraphFusion, determining the balance between structural propagation and global
+semantic embeddings within the scoring function. A well-calibrated λ is essential for optimizing model performance across different
+datasets and biomedical knowledge graph structures. To systematically investigate its impact, we conducted experiments by varying λ
+over the set {0.3, 0.4, 0.5, 0.6, 0.7, 0.8}, evaluating model effectiveness using MRR, Hit@1, and Hit@10.
+Our results reveal a clear trend: performance, as measured by MRR, Hit@1, and Hit@10, consistently improves as λ increases from
+0.3, peaking at λ = 0.7 (MRR 0.429, Hit@1 0.377, Hit@10 0.529). Beyond this point, increasing λ to 0.8 leads to a slight performance
+decline. This observed peak at λ = 0.7 suggests an optimal calibration where the model achieves a harmonious integration of its
+diverse information sources—primarily structural patterns and semantic knowledge. At this value, these components achieve a synergy,
+contributing in the most balanced and effective manner to the model’s final predictions. The subsequent performance dip beyond λ = 0.7
+indicates that higher values may disrupt this calibrated balance, leading to a less complementary interplay of the model’s informational
+components and, consequently, suboptimal generalization.
+Consequently, the parameter λ in our scoring function, ˜f(qe, qr, qa) = λf(qe, qr, qa) + (1 −λ)ϕ(qe, qr, qa), should not be misconstrued
+as a simple toggle weighting ’pure’ Graph Structure Propagation (GSP) against ’pure’ Knowledge Embedding (KE). Instead, λ fine-tunes
+the contributions of two distinct yet deeply intertwined components to the final score: f(qe, qr, qa), which represents the output of our
+GSP module (itself initialized and guided by KE), and ϕ(qe, qr, qa), which is the direct score from our tensor decomposition-based KE
+module.
+Given this inherent coupling—where KE directly informs the GSP process that yields f—KE’s influence is integral to both terms,
+albeit differently. While ϕ offers a direct semantic score, f provides structural insights shaped by KE. Thus, λ balances their ultimate
+contributions to the score, but the underlying structural information (channeled through f) and the overarching semantic context (from
+ϕ and also embedded within f) are both fundamental to the model’s predictive capabilities. Optimizing λ is therefore aimed at an
+ideal balance between global semantic knowledge from embeddings and the information gathered through semantically-guided graph
+propagation. This crucial balance ensures global semantics effectively steer graph propagation, helping to capture fine-grained, local
+interactions. A well-calibrated model can then comprehensively represent diverse relationships within biomedical graphs, ultimately
+yielding robust and accurate predictive scores.
+Impact of Propagation Steps ℓ
+We evaluated the number of propagation steps ℓover {4, 5, 6, 7, 8}. Performance improves with increasing ℓ, peaking at ℓ= 6 (with MRR
+of 0.429, Hit@1 of 0.377, and Hit@10 of 0.529), and then declines at ℓ= 8. This suggests that an optimal propagation depth exists:
+too few steps limit the model’s ability to capture extended neighborhood information, whereas too many steps lead to over-smoothing,
+causing node representations to become overly similar and less discriminative. The results indicate that a propagation depth of 6 best
+balances information aggregation and preservation of distinct node features.
+The above analysis is specifically for the Disease-Gene dataset. Nevertheless, we speculate that a similar trend regarding the parameter
+ℓwill be observed on other datasets, namely the existence of an optimal propagation depth that balances information propagation and
+over-smoothing. However, the specific numerical value of the optimal ℓmay vary depending on the characteristics of the practical dataset.
+(11) SM11: Protein-Protein Interaction Network Analysis of Known and Predicted Melanoma-Associated
+Genes
+To assess the functional relevance of the genes identified by BioGraphFusion, we analyzed the connectivity patterns within the Protein-
+Protein Interaction (PPI) network. By comparing the observed number of interactions between known melanoma-associated genes and
+20
+Lin et al.
+Fig. 9: Link visualization of known and predicted genes for melanoma on the PPI network. & For melanoma, the observed number of
+network links is significantly larger than the random control (P = 4.669E-86, binomial test)
+predicted candidates with a randomly expected baseline, we evaluated the statistical significance of these connections using a binomial
+test. The results clearly indicate that the observed connectivity is far greater than expected by chance.
+The resulting PPI network (Fig. 9) reveals 588 actual interactions among known and predicted genes, substantially exceeding the
+expected 213.17 connections under a random model (P = 4.669E-86, binomial test). This high degree of interconnectivity suggests that
+the predicted genes are functionally linked to known melanoma-associated genes, potentially sharing key pathways involved in disease
+progression. These findings demonstrate the robustness and reliability of the BioGraphFusion predictive framework, reinforcing its
+potential as a powerful tool for uncovering novel candidate genes with functional relevance. The model’s ability to integrate diverse
+biological data and accurately predict gene interactions highlights its utility in advancing melanoma research and guiding further
+experimental validation.
+
